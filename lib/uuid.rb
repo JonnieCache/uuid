@@ -3,6 +3,8 @@
 #
 # Author:: Assaf Arkin  assaf@labnotes.org
 #          Eric Hodel drbrain@segment7.net
+# Forked by::
+#          Jonathan Davies jonnie@cleverna.me
 # Copyright:: Copyright (c) 2005-2010 Assaf Arkin, Eric Hodel
 # License:: MIT and/or Creative Commons Attribution-ShareAlike
 
@@ -11,6 +13,7 @@ require 'thread'
 require 'tmpdir'
 require 'socket'
 require 'macaddr'
+require 'active_support/secure_random'
 
 
 ##
@@ -193,6 +196,24 @@ class UUID
     return true if
       uuid =~ /\A(urn:uuid:)?[\da-f]{8}-([\da-f]{4}-){3}[\da-f]{12}\z/i
   end
+  
+  ##
+  # Does exception handling for when the macaddr gem cannot get the mac address
+  # In this case we generate a random fake mac address
+  def self.get_mac_address
+    begin
+      Mac.addr.gsub(/:|-/, '').hex & 0x7FFFFFFFFFFF
+    rescue
+      random_mac_address
+    end
+  end
+  
+  ##
+  # Generates a random mac address with the first octet set to 01 to identify it as fake, as per the RFC
+  # http://tools.ietf.org/html/rfc4122#section-4.5
+  def self.random_mac_address
+    ('01'+SecureRandom.hex(5)).hex & 0x7FFFFFFFFFFF
+  end
 
   ##
   # Create a new UUID generator.  You really only need to do this once.
@@ -205,7 +226,7 @@ class UUID
     if state_file && File.size?(state_file) then
       next_sequence
     else
-      @mac = Mac.addr.gsub(/:|-/, '').hex & 0x7FFFFFFFFFFF
+      @mac = self.class.get_mac_address
       fail "Cannot determine MAC address from any available interface, tried with #{Mac.addr}" if @mac == 0
       @sequence = rand 0x10000
 
@@ -255,7 +276,7 @@ class UUID
         @last_clock = clock
       end
     end until clock
-
+    
     template % [
         clock        & 0xFFFFFFFF,
        (clock >> 32) & 0xFFFF,
